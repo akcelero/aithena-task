@@ -1,0 +1,83 @@
+[project]
+name = "aithena"
+version = "0.1.0"
+description = "Recruitment task"
+authors = [
+    { name = "akcelero", email = "akcelero@gmail.com" }
+]
+requires-python = ">=3.15"
+dependencies = [
+    "anthropic>=2.3.0",
+    "pydantic>=2.14.2",
+]
+
+[project.scripts]
+aithena = "aithena.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+test = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py315"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "FAST",    # FastAPI
+    "ASYNC",   # flake8-async
+    "S",       # bandit
+    "BLE",     # flake8-blind-except
+    "FBT",     # flake8-boolean-trap
+    "B",       # flake8-bugbear
+    "A",       # flake8-builtins
+    "COM",     # flake8-commas
+    "C4",      # flake8-comprehensions
+    "DTZ",     # flake8-datetimez
+    "T10",     # flake8-debugger
+    "EXE",     # flake8-executable
+    "FA",      # flake8-future-annotations
+    "ISC",     # flake8-implicit-str-concat
+    "ICN",     # flake8-import-conventions
+    "LOG",     # flake8-logging
+    "INP",     # flake8-no-pep420
+    "PIE",     # flake8-pie
+    "T20",     # flake8-print
+    "PYI",     # flake8-pyi
+    "PT",      # flake8-pytest-style
+    "Q",       # flake8-quotes
+    "RET",     # flake8-return
+    "SLF",     # flake8-self
+    "SIM",     # flake8-simplify
+    "SLOT",    # flake8-slots
+    "TID",     # flake8-tidy-imports
+    "TD",      # flake8-todos
+    "ARG",     # flake8-unused-arguments
+    "PTH",     # flake8-use-pathlib
+    "FLY",     # flynt
+    "I",       # isort
+    "C90",     # mccabe
+    "N",       # pep8-naming
+    "PERF",    # Perflint
+    "E",       # Error
+    "W",       # Warning
+    "F",       # Pyflakes
+    "PL",      # Pylint
+    "UP",      # pyupgrade
+    "FURB",    # refurb
+    "RUF",     # Ruff-specific rules
+    "TRY",     # tryceratops
+]
+ignore = ["COM812"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # assert is how pytest checks results
+"src/aithena/main.py" = ["T201"]  # print is the CLI's output
+"src/aithena/llm/client.py" = ["PLR0913", "TRY003"]  # parse_source takes keyword-only inputs; error text is intentional

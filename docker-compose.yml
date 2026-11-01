@@ -1,0 +1,11 @@
+services:
+  aithena:
+    build:
+      context: .
+      target: runtime
+    image: aithena:local
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data:ro
+      - ./output:/app/output
