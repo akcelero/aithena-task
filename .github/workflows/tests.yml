@@ -28,3 +28,16 @@ jobs:
 
       - name: Run tests
         run: uv run --locked --group test pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test image (test stage)
+        run: docker build --target test -t aithena:test .
+
+      - name: Build runtime image
+        run: docker build --target runtime -t aithena:ci .
+
+      # CD: push aithena:ci to a registry here, once there is a deploy target.
