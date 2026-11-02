@@ -33,7 +33,7 @@ Bonus point for:
 
 Type checking and linting
 - Every function has type hints. Do not use `Any`; prefer precise types, generics (PEP 695 syntax), or a named alias such as `JsonValue`.
-- `mypy --strict src/aithena` and `pyright src` must pass. `ruff check src/aithena` must pass.
+- `mypy --strict src/aithena`, `pyright src` and `ty check src tests` must pass. `ruff check src tests` must pass.
 - Remove unused code, imports and variables rather than leaving them around.
 
 Design

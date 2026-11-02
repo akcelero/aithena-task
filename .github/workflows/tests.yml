@@ -26,6 +26,9 @@ jobs:
       - name: Lint with ruff
         run: uv run --locked --group test ruff check src tests
 
+      - name: Type check with ty
+        run: uv run --locked --group test ty check src tests
+
       - name: Run tests
         run: uv run --locked --group test pytest
 

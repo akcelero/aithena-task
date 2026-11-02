@@ -1,53 +1,23 @@
-import re
 from pathlib import Path
 
-from aithena.config.settings import Model, ModelConfig
-from aithena.models.schemas import FunctionInfo, FunctionList, LicenseInfo, RustRewrite
+import pytest
+from pydantic import BaseModel
+
+from aithena.config.settings import Model
+from aithena.llm.client import ClaudeClient, ClaudeResponseError
+from aithena.models.schemas import FunctionList, RustRewrite
 from aithena.pipeline.routing import extract_licenses, process_licenses
-
-MODELS = ModelConfig(for_extraction=Model.HAIKU_5_5, for_rust=Model.OPUS_5_5)
-
-MIT_SOURCE = "# MIT License\n# Copyright (c) 2020 Ada\n\ndef only(x):\n    return x\n"
-GPL_SMALL_SOURCE = "# GNU General Public License v3\n# Copyright (c) 2021 Bob\n\ndef one():\n    pass\n"
-GPL_BIG_SOURCE = (
-    "# GNU General Public License v3\n# Copyright (c) 2021 Bob\n\n"
-    "def a():\n    pass\n\ndef b():\n    pass\n\ndef c():\n    pass\n"
-)
-PROPRIETARY_SOURCE = "# Copyright ACME. All rights reserved.\n\ndef secret():\n    pass\n"
+from tests.fakes import as_sdk
+from tests.samples import MIT_SOURCE, MODELS, respond, write_fixtures
 
 
-def respond(schema: type, text: str) -> object:
-    """Answer like the real model would for the fixture files used below."""
-    if schema is LicenseInfo:
-        if "MIT License" in text:
-            return LicenseInfo(copyright_holder="Ada", license_name="MIT", license_type="permissive")
-
-        if "GNU General Public License" in text:
-            return LicenseInfo(copyright_holder="Bob", license_name="GPL-3.0", license_type="copyleft")
-
-        return LicenseInfo(copyright_holder="ACME", license_name=None, license_type="proprietary")
-
-    if schema is FunctionList:
-        names = re.findall(r"^def (\w+)\(", text, re.MULTILINE)
-
-        return FunctionList(functions=[FunctionInfo(name=n, parameters=[]) for n in names])
-
-    return RustRewrite(code="fn converted() {}")
-
-
-def write_fixtures(data_dir: Path) -> None:
-    (data_dir / "perm.py").write_text(MIT_SOURCE, encoding="utf-8")
-    (data_dir / "gpl_small.py").write_text(GPL_SMALL_SOURCE, encoding="utf-8")
-    (data_dir / "gpl_big.py").write_text(GPL_BIG_SOURCE, encoding="utf-8")
-    (data_dir / "prop.py").write_text(PROPRIETARY_SOURCE, encoding="utf-8")
-
-
-def test_extract_licenses_classifies_each_file(make_client, tmp_path: Path) -> None:
+def test_extract_licenses_classifies_each_file(make_llm, tmp_path: Path) -> None:
     write_fixtures(tmp_path)
-    client = make_client(respond)
+    llm = make_llm(respond)
 
-    licenses = extract_licenses(client, MODELS, tmp_path)
+    licenses, errors = extract_licenses(llm, MODELS, tmp_path)
 
+    assert errors == {}
     assert {name: info.license_type for name, info in licenses.items()} == {
         "gpl_big.py": "copyleft",
         "gpl_small.py": "copyleft",
@@ -56,28 +26,75 @@ def test_extract_licenses_classifies_each_file(make_client, tmp_path: Path) -> N
     }
 
 
-def test_process_licenses_routes_by_license_and_function_count(make_client, tmp_path: Path) -> None:
+def test_process_licenses_routes_by_license_and_function_count(make_llm, tmp_path: Path) -> None:
     write_fixtures(tmp_path)
-    client = make_client(respond)
-    licenses = extract_licenses(client, MODELS, tmp_path)
+    llm = make_llm(respond)
+    licenses, _ = extract_licenses(llm, MODELS, tmp_path)
 
-    functions, rust = process_licenses(client, MODELS, licenses, tmp_path)
+    functions, rust, errors = process_licenses(llm, MODELS, licenses, tmp_path)
 
+    assert errors == {}
     assert set(functions) == {"perm.py", "gpl_big.py"}
     assert rust == {"gpl_small.py": "fn converted() {}"}
     assert "prop.py" not in functions
     assert "prop.py" not in rust
 
 
+def test_undecodable_file_is_reported_and_others_still_processed(make_llm, tmp_path: Path) -> None:
+    write_fixtures(tmp_path)
+    (tmp_path / "broken.py").write_bytes(b"\xff\xfe\x00 not utf-8")
+    llm = make_llm(respond)
+
+    licenses, errors = extract_licenses(llm, MODELS, tmp_path)
+
+    assert "broken.py" not in licenses
+    assert errors["broken.py"].startswith("UnicodeDecodeError")
+    assert set(licenses) == {"gpl_big.py", "gpl_small.py", "perm.py", "prop.py"}
+
+
+def test_api_failure_on_one_file_does_not_stop_the_rest(make_llm, tmp_path: Path) -> None:
+    write_fixtures(tmp_path)
+    (tmp_path / "fail.py").write_text(MIT_SOURCE + "# FAIL\n", encoding="utf-8")
+
+    def respond_with_failure(schema: type[BaseModel], text: str) -> BaseModel:
+        if schema is FunctionList and "FAIL" in text:
+            raise ClaudeResponseError("No structured output for fail.py")
+        return respond(schema, text)
+
+    llm = make_llm(respond_with_failure)
+    licenses, license_errors = extract_licenses(llm, MODELS, tmp_path)
+
+    functions, rust, process_errors = process_licenses(llm, MODELS, licenses, tmp_path)
+
+    assert license_errors == {}
+    assert process_errors == {"fail.py": "ClaudeResponseError: No structured output for fail.py"}
+    assert "perm.py" in functions
+    assert "gpl_big.py" in functions
+    assert "gpl_small.py" in rust
+
+
+def test_unexpected_errors_are_not_swallowed(make_llm, tmp_path: Path) -> None:
+    write_fixtures(tmp_path)
+
+    def respond_with_bug(_schema: type, _text: str) -> object:
+        raise KeyError("bug in the pipeline")
+
+    llm = make_llm(respond_with_bug)
+
+    with pytest.raises(KeyError):
+        extract_licenses(llm, MODELS, tmp_path)
+
+
 def test_models_are_routed_per_stage(make_client, tmp_path: Path) -> None:
     write_fixtures(tmp_path)
-    client = make_client(respond)
-    licenses = extract_licenses(client, MODELS, tmp_path)
-    client.beta.messages.calls.clear()
+    fake = make_client(respond)
+    llm = ClaudeClient(as_sdk(fake))
+    licenses, _ = extract_licenses(llm, MODELS, tmp_path)
+    fake.beta.messages.calls.clear()
 
-    process_licenses(client, MODELS, licenses, tmp_path)
+    process_licenses(llm, MODELS, licenses, tmp_path)
 
-    rust_models = [model for model, schema in client.beta.messages.calls if schema is RustRewrite]
-    other_models = [model for model, schema in client.beta.messages.calls if schema is not RustRewrite]
+    rust_models = [model for model, schema in fake.beta.messages.calls if schema is RustRewrite]
+    other_models = [model for model, schema in fake.beta.messages.calls if schema is not RustRewrite]
     assert rust_models == [Model.OPUS_5_5]
     assert set(other_models) == {Model.HAIKU_5_5}

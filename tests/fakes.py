@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
+import anthropic
 from pydantic import BaseModel
 
 # Decides what the fake Claude returns: receives the requested schema and the prompt text.
@@ -25,7 +26,8 @@ class FakeMessages:
     ) -> SimpleNamespace:
         self.calls.append((model, output_format))
         parsed = self._respond(output_format, messages[0]["content"])
-        return SimpleNamespace(stop_reason="end_turn", stop_details=None, parsed_output=parsed)
+        usage = SimpleNamespace(input_tokens=100, output_tokens=20)
+        return SimpleNamespace(stop_reason="end_turn", stop_details=None, parsed_output=parsed, usage=usage)
 
 
 class FakeClient:
@@ -33,3 +35,8 @@ class FakeClient:
 
     def __init__(self, respond: Responder) -> None:
         self.beta = SimpleNamespace(messages=FakeMessages(respond))
+
+
+def as_sdk(fake: FakeClient) -> anthropic.Anthropic:
+    """FakeClient implements the part of anthropic.Anthropic that the app uses, so the cast is safe."""
+    return cast("anthropic.Anthropic", fake)

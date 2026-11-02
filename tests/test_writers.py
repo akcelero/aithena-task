@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from aithena.models.schemas import LicenseInfo
+from aithena.models.schemas import FunctionInfo, FunctionList, LicenseInfo, Parameter
 from aithena.output.writers import JsonWriter, ResultWriter, RustWriter, write_results
 
 
@@ -38,4 +38,23 @@ def test_write_results_serialises_models(tmp_path: Path) -> None:
 
 def test_result_writer_is_abstract(tmp_path: Path) -> None:
     with pytest.raises(TypeError):
-        ResultWriter(tmp_path)  # type: ignore[abstract]
+        ResultWriter(tmp_path)  # type: ignore[abstract]  # ty: ignore[call-non-callable]
+
+
+def test_function_output_includes_argument_count(tmp_path: Path) -> None:
+    functions = {
+        "f.py": FunctionList(
+            functions=[
+                FunctionInfo(
+                    name="g",
+                    parameters=[Parameter(name="x", type=None), Parameter(name="y", type="int")],
+                )
+            ]
+        )
+    }
+    target = tmp_path / "functions.json"
+
+    write_results(functions, JsonWriter(target))
+
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["f.py"]["functions"][0]["argument_count"] == 2

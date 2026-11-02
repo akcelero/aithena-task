@@ -10,10 +10,13 @@ lock-check:
 lint:
     uv run --locked --group test ruff check src tests
 
+typecheck:
+    uv run --locked --group test ty check src tests
+
 test:
     uv run --locked --group test pytest
 
-check: lock-check lint test
+check: lock-check lint typecheck test
 
 run data="data" out="output":
     uv run aithena {{data}} {{out}}

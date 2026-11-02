@@ -22,6 +22,7 @@ build-backend = "uv_build"
 test = [
     "pytest>=9.2.0",
     "ruff>=0.17.3",
+    "ty>=0.0.95",
 ]
 
 [tool.ruff]
@@ -78,6 +79,6 @@ select = [
 ignore = ["COM812"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]  # assert is how pytest checks results
+"tests/*" = ["S101", "TRY003", "PLR2004"]  # assert is how pytest checks results; tests use literal expected values
 "src/aithena/main.py" = ["T201"]  # print is the CLI's output
 "src/aithena/llm/client.py" = ["PLR0913", "TRY003"]  # parse_source takes keyword-only inputs; error text is intentional

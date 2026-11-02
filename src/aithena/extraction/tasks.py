@@ -1,10 +1,8 @@
 from pathlib import Path
 
-import anthropic
-
 from aithena.config.settings import Model
 from aithena.extraction.headers import extract_header_comment
-from aithena.llm.client import parse_source
+from aithena.llm.client import ClaudeClient
 from aithena.models.schemas import FunctionList, LicenseInfo, RustRewrite
 
 LICENSE_SYSTEM_PROMPT = (
@@ -28,16 +26,15 @@ REWRITE_SYSTEM_PROMPT = (
 )
 
 
-def extract_license(client: anthropic.Anthropic, model: Model, path: str | Path) -> LicenseInfo:
+def extract_license(llm: ClaudeClient, model: Model, path: Path) -> LicenseInfo:
     """Send the file's header comment to Claude and return the extracted license info."""
 
-    header = extract_header_comment(Path(path).read_text(encoding="utf-8"))
+    header = extract_header_comment(path.read_text(encoding="utf-8"))
 
     if not header.strip():
         return LicenseInfo(copyright_holder=None, license_name=None, license_type="unknown")
 
-    return parse_source(
-        client,
+    return llm.parse(
         model=model,
         path=path,
         system=LICENSE_SYSTEM_PROMPT,
@@ -47,13 +44,12 @@ def extract_license(client: anthropic.Anthropic, model: Model, path: str | Path)
     )
 
 
-def extract_functions(client: anthropic.Anthropic, model: Model, path: str | Path) -> FunctionList:
+def extract_functions(llm: ClaudeClient, model: Model, path: Path) -> FunctionList:
     """Send the whole file to Claude and return its function names with argument counts."""
 
-    source = Path(path).read_text(encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
 
-    return parse_source(
-        client,
+    return llm.parse(
         model=model,
         path=path,
         system=FUNCTIONS_SYSTEM_PROMPT,
@@ -63,13 +59,12 @@ def extract_functions(client: anthropic.Anthropic, model: Model, path: str | Pat
     )
 
 
-def rewrite_in_rust(client: anthropic.Anthropic, model: Model, path: str | Path) -> str:
+def rewrite_in_rust(llm: ClaudeClient, model: Model, path: Path) -> str:
     """Send the whole file to Claude and return its Rust rewrite."""
 
-    source = Path(path).read_text(encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
 
-    result = parse_source(
-        client,
+    result = llm.parse(
         model=model,
         path=path,
         system=REWRITE_SYSTEM_PROMPT,
